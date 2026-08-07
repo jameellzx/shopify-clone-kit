@@ -1,0 +1,19 @@
+{
+    "name":  "shopify-clone-kit",
+    "version":  "1.0.4",
+    "description":  "Clone any website into a Shopify theme as pixel-perfect, fully editable Liquid. Captures the source at three viewports plus its interactive states, rebuilds app-driven mechanics natively, and verifies the result with a screenshot diff loop and a schema audit.",
+    "author":  {
+                   "name":  "jameellzx"
+               },
+    "license":  "MIT",
+    "keywords":  [
+                     "shopify",
+                     "liquid",
+                     "theme",
+                     "clone",
+                     "sections",
+                     "ecommerce",
+                     "web-design"
+                 ],
+    "skills":  "./skills/"
+}

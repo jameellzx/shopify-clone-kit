@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "shopify-clone-kit",
+  "description": "Rebuild any website — full site, page, or single section — as pixel-perfect, fully editable Shopify Liquid.",
+  "owner": {
+    "name": "jameellzx"
+  },
+  "plugins": [
+    {
+      "name": "shopify-clone-kit",
+      "description": "Clone a URL into a Shopify theme: captured, decomposed, rebuilt as dynamic Liquid sections, and verified by screenshot diff.",
+      "source": "./plugins/shopify-clone-kit",
+      "category": "productivity"
+    }
+  ]
+}
