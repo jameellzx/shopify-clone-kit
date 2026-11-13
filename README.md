@@ -91,6 +91,16 @@ python قوالب/install.py <name> <theme> --store x.myshopify.com --theme-id N
 The library folder is `CK_TEMPLATES_DIR`, else `قوالب/` in the current folder. The HTML export needs
 `python -m pip install python-liquid`.
 
+Each template also gets a slot map, `slots.json`: every fillable setting (text, images, links, colours, fonts,
+layout), which ones are facts (prices, ratings, reviews) and the template's own text and images as
+"leftovers". A demo builder can fill a template with another brand's content and render it as HTML:
+
+```bash
+python scripts/save_template.py --slots-only قوالب/<name>     # add slots.json to an older template
+python scripts/export_html.py قوالب/<name> --index my-index.json --images my-images/ \
+  --shop-name "Brand" --logo logo.jpg --lang ar --dir rtl --noindex --out demo/index.html
+```
+
 ## Using the scripts standalone
 
 ```bash

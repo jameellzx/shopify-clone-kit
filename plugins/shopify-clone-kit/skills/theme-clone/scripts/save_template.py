@@ -5,9 +5,10 @@ Usage:
     python save_template.py <theme_dir> <name> --title "..." [--images DIR] [--previews a.jpg b.jpg]
                             [--source-url URL] [--store x.myshopify.com --theme-id N] [--library DIR]
     python save_template.py --gallery [--library DIR]      # only rebuild <library>/index.html
+    python save_template.py --slots-only <template_dir>    # only (re)write <template>/slots.json
 
 Writes <library>/<name>/:
-    template.json, sections/ck-*.liquid, templates/index.json, templates/footer-section.json,
+    template.json, slots.json (fillable settings map for demo builders), sections/ck-*.liquid, templates/index.json, templates/footer-section.json,
     images/ (+ photo-credits.json when given), preview-*.jpg, source/ (gen.py, clone-manifest.json
     when found in <theme>/.clone/), html/index.html (standalone HTML version), README.md
 and refreshes <library>/index.html (gallery), <library>/README.md table and <library>/install.py.
@@ -45,6 +46,105 @@ def load_json(path):
 def write_json(path, data):
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+FILLABLE = {"text", "textarea", "richtext", "inline_richtext", "html", "image_picker", "url", "color",
+            "color_background", "font_picker", "range", "number", "checkbox", "select", "video_url"}
+TEXT_TYPES = {"text", "textarea", "richtext", "inline_richtext", "html"}
+FACT_RE = re.compile(r"price|rating|review|count|quote|testimonial|guarantee|number|stat|award|press|"
+                     r"customers|sold|years|percent", re.I)
+FACT_BLOCKS = re.compile(r"review|testimonial|logo|press|stat|award|badge", re.I)
+NOT_FACT_RE = re.compile(r"size|repeat|speed|padding|margin|width|height|columns|opacity|radius|gap|label$", re.I)
+TAG_RE = re.compile(r"<[^>]+>")
+CONTENT_TYPES = TEXT_TYPES | {"image_picker", "url", "video_url"}
+BRAND_TYPES = {"color", "color_background", "font_picker"}
+
+
+def is_grey(hex_color):
+    h = hex_color.lstrip("#")
+    return len(h) == 6 and h[0:2] == h[2:4] == h[4:6]
+
+
+def build_slots(template_dir):
+    """Write <template>/slots.json: every fillable setting of the template, so a demo builder can
+    fill the template with a client's content (new values in a copy of index.json, then export_html.py).
+
+    Each slot: path, file, section, section_type, block (key or null), block_type, setting_id, type,
+    group (content = text/images/links, brand = colours/fonts, layout = sizes/toggles), label, value (current value, or the schema default), fact (must come from a real client source).
+    Sections: can_hide, blocks (type -> can_repeat, max). leftovers: the template's own text, image
+    file names and colours; none of them may remain in a filled demo."""
+    sec_dir = os.path.join(template_dir, "sections")
+    schemas = {}
+    for path in glob.glob(os.path.join(sec_dir, "*.liquid")):
+        m = SCHEMA_RE.search(open(path, encoding="utf-8").read())
+        if m:
+            schemas[os.path.basename(path)[:-7]] = json.loads(m.group(1))
+
+    slots, sections, texts, images, colors = [], [], set(), set(), set()
+
+    def add(file, key, stype, bkey, btype, sdefs, values):
+        for s in sdefs or []:
+            sid, t = s.get("id"), s.get("type")
+            if not sid or t not in FILLABLE:
+                continue
+            val = values.get(sid, s.get("default"))
+            label = s.get("label", sid)
+            fact = bool(FACT_RE.search(sid) or FACT_RE.search(str(label)) or (btype and FACT_BLOCKS.search(btype)))
+            if (t not in TEXT_TYPES and t not in ("range", "number")) or NOT_FACT_RE.search(sid):
+                fact = False
+            group = "content" if t in CONTENT_TYPES else "brand" if t in BRAND_TYPES else "layout"
+            loc = f"{file}:{key}" + (f"/{bkey}" if bkey else "") + f"/{sid}"
+            slots.append({"path": loc, "file": file, "section": key, "section_type": stype, "block": bkey,
+                          "block_type": btype, "setting_id": sid, "type": t, "group": group, "label": label,
+                          "value": val, "fact": fact})
+            if val in (None, ""):
+                continue
+            if t in TEXT_TYPES:
+                plain = html.unescape(TAG_RE.sub(" ", str(val))).strip()
+                if len(plain) >= 4:
+                    texts.add(" ".join(plain.split()))
+            elif t == "image_picker":
+                images.add(str(val).rsplit("/", 1)[-1])
+            elif t in ("color", "color_background") and str(val).startswith("#") and not is_grey(str(val)):
+                colors.add(str(val).upper())
+
+    for file in ("index", "footer-section"):
+        path = os.path.join(template_dir, "templates", file + ".json")
+        if not os.path.exists(path):
+            continue
+        data = load_json(path)
+        secs = data.get("sections", data)
+        for key in data.get("order", list(secs.keys())):
+            sec = secs[key]
+            schema = schemas.get(sec.get("type"), {})
+            add(file, key, sec["type"], None, None, schema.get("settings"), sec.get("settings") or {})
+            bdefs = {b["type"]: b for b in schema.get("blocks", []) if b.get("type")}
+            for bkey in sec.get("block_order", list((sec.get("blocks") or {}).keys())):
+                b = sec["blocks"][bkey]
+                add(file, key, sec["type"], bkey, b["type"], bdefs.get(b["type"], {}).get("settings"),
+                    b.get("settings") or {})
+            sections.append({
+                "file": file, "section": key, "type": sec["type"], "can_hide": True,
+                "disabled": bool(sec.get("disabled")),
+                "block_order": sec.get("block_order", list((sec.get("blocks") or {}).keys())),
+                "blocks": {t: {"can_repeat": True, "limit": d.get("limit")} for t, d in bdefs.items()},
+                "max_blocks": schema.get("max_blocks"),
+            })
+
+    out = {
+        "template": os.path.basename(os.path.abspath(template_dir)),
+        "how_to_fill": "Copy templates/*.json, set new values at each slot path (file:section[/block]/setting), "
+                       "clone a block of the same type to add items, set \"disabled\": true to hide a section, "
+                       "then run export_html.py --index <new index.json> --images <new images dir>.",
+        "slots": slots,
+        "sections": sections,
+        "leftovers": {"texts": sorted(texts), "images": sorted(images), "colors": sorted(colors)},
+    }
+    write_json(os.path.join(template_dir, "slots.json"), out)
+    groups = {g: sum(s["group"] == g for s in slots) for g in ("content", "brand", "layout")}
+    print(f"slots: {len(slots)} settings {groups}, {len(sections)} sections, "
+          f"{sum(s['fact'] for s in slots)} fact slots -> {os.path.join(template_dir, 'slots.json')}")
+    return out
 
 
 def templates(library):
@@ -162,7 +262,11 @@ def main():
     ap.add_argument("--theme-id", default="")
     ap.add_argument("--library", default=DEFAULT_LIBRARY)
     ap.add_argument("--gallery", action="store_true")
+    ap.add_argument("--slots-only", metavar="TEMPLATE_DIR", help="only (re)write <template>/slots.json")
     a = ap.parse_args()
+    if a.slots_only:
+        build_slots(a.slots_only)
+        return 0
     os.makedirs(a.library, exist_ok=True)
 
     if a.gallery:
@@ -226,6 +330,7 @@ def main():
     if os.path.exists(old):
         meta = {**meta, **{k: v for k, v in load_json(old).items() if k in ("title", "colors", "fonts", "images", "copy")}}
     write_json(old, meta)
+    build_slots(dst)
 
     subprocess.run([sys.executable, os.path.join(HERE, "export_html.py"), dst], check=True)
     html_preview(dst)

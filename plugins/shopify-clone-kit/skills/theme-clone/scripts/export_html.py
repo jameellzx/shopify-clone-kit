@@ -7,6 +7,15 @@ and Google Fonts for the heading/body fonts, so it opens in any browser without 
 Usage:
     python export_html.py <template_dir> [--out <template_dir>/html/index.html] [--title "..."]
 
+Demo builders (fill a template with someone else's content, see slots.json) can also pass:
+    --index FILE --footer FILE   use these instead of templates/index.json / footer-section.json
+    --images DIR                 image folder (default <template_dir>/images)
+    --shop-name NAME --logo FILE --nav "Home|Shop|Contact"   header text, logo image, menu labels
+    --lang ar --dir rtl          <html lang/dir>
+    --noindex                    <meta name="robots" content="noindex,nofollow">
+    --head-html FILE --body-end-html FILE   extra HTML at the end of <head> / <body>
+With none of these the output is the same as before.
+
 Needs: pip install python-liquid
 Covers the tags and filters clone sections use. Shopify-only pieces render as a plain
 stand-in: {% form %} -> <form>, {% render %} -> nothing, video_tag -> nothing,
@@ -38,6 +47,9 @@ FONT_NAMES = {
     "nunito": "Nunito", "nunito_sans": "Nunito Sans", "assistant": "Assistant", "montserrat": "Montserrat",
     "poppins": "Poppins", "lato": "Lato", "open_sans": "Open Sans", "roboto": "Roboto", "inter": "Inter",
     "dm_sans": "DM Sans", "work_sans": "Work Sans", "rubik": "Rubik", "karla": "Karla", "playfair_display": "Playfair Display",
+    # Arabic
+    "tajawal": "Tajawal", "cairo": "Cairo", "almarai": "Almarai", "ibm_plex_sans_arabic": "IBM Plex Sans Arabic",
+    "noto_kufi_arabic": "Noto Kufi Arabic", "noto_naskh_arabic": "Noto Naskh Arabic", "readex_pro": "Readex Pro",
 }
 
 PLACEHOLDER = ('<svg class="{cls}" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" '
@@ -119,7 +131,7 @@ def settings_with_defaults(schema_settings, values, images_rel):
     return out
 
 
-def render_section(env, sec_dir, key, data, images_rel, stylesheets, scripts, fonts):
+def render_section(env, sec_dir, key, data, images_rel, stylesheets, scripts, fonts, shop_name="My Store"):
     path = os.path.join(sec_dir, data["type"] + ".liquid")
     if not os.path.exists(path):
         return f"<!-- section type {data['type']} not in template -->"
@@ -143,7 +155,7 @@ def render_section(env, sec_dir, key, data, images_rel, stylesheets, scripts, fo
                        "settings": settings_with_defaults(bdef.get("settings"), b.get("settings", {}), images_rel)})
     ctx = {
         "section": {"id": key, "settings": settings, "blocks": blocks},
-        "shop": {"name": "My Store", "policies": []},
+        "shop": {"name": shop_name, "policies": []},
         "routes": {"root_url": "#", "all_products_collection_url": "#", "cart_url": "#", "search_url": "#"},
         "settings": {},
         "request": {"design_mode": False},
@@ -175,12 +187,24 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--title")
     ap.add_argument("--currency", default="$")
+    ap.add_argument("--index")
+    ap.add_argument("--footer")
+    ap.add_argument("--images")
+    ap.add_argument("--shop-name", default="My Store")
+    ap.add_argument("--logo")
+    ap.add_argument("--nav", default="Home|Catalog|Contact")
+    ap.add_argument("--lang", default="en")
+    ap.add_argument("--dir", choices=["ltr", "rtl"])
+    ap.add_argument("--noindex", action="store_true")
+    ap.add_argument("--head-html")
+    ap.add_argument("--body-end-html")
     a = ap.parse_args()
 
     tdir = os.path.abspath(a.template)
     out = os.path.abspath(a.out or os.path.join(tdir, "html", "index.html"))
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    images_rel = os.path.relpath(os.path.join(tdir, "images"), os.path.dirname(out)).replace("\\", "/")
+    images_dir = os.path.abspath(a.images) if a.images else os.path.join(tdir, "images")
+    images_rel = os.path.relpath(images_dir, os.path.dirname(out)).replace("\\", "/")
     meta = {}
     if os.path.exists(os.path.join(tdir, "template.json")):
         meta = json.load(open(os.path.join(tdir, "template.json"), encoding="utf-8"))
@@ -190,8 +214,9 @@ def main():
     sec_dir = os.path.join(tdir, "sections")
     stylesheets, scripts, fonts = {}, {}, set()
     parts = []
+    overrides = {"index.json": a.index, "footer-section.json": a.footer}
     for fname in ("index.json", "footer-section.json"):
-        path = os.path.join(tdir, "templates", fname)
+        path = overrides[fname] or os.path.join(tdir, "templates", fname)
         if not os.path.exists(path):
             continue
         data = json.load(open(path, encoding="utf-8-sig"))
@@ -201,7 +226,7 @@ def main():
             sec = sections[key]
             if sec.get("disabled"):
                 continue
-            parts.append(render_section(env, sec_dir, key, sec, images_rel, stylesheets, scripts, fonts))
+            parts.append(render_section(env, sec_dir, key, sec, images_rel, stylesheets, scripts, fonts, a.shop_name))
 
     families = {}
     for fam, w in fonts:
@@ -210,8 +235,20 @@ def main():
                   for fam, ws in sorted(families.items()))
     first_font = sorted(families)[0] if families else "sans-serif"
 
+    def read(path):
+        return open(path, encoding="utf-8").read() if path else ""
+    html_attrs = f'lang="{html.escape(a.lang)}"' + (f' dir="{a.dir}"' if a.dir else "")
+    head_extra = ('<meta name="robots" content="noindex,nofollow">\n' if a.noindex else "") + read(a.head_html)
+    brand = html.escape(a.shop_name)
+    if a.logo:
+        logo_rel = os.path.relpath(os.path.abspath(a.logo), os.path.dirname(out)).replace("\\", "/")
+        brand = f'<img src="{html.escape(logo_rel)}" alt="{brand}" class="ck-demo-logo"> <span>{brand}</span>'
+        head_extra += ("<style>.ck-demo-header strong { display: flex; align-items: center; gap: 10px; }"
+                       " .ck-demo-logo { height: 40px; width: 40px; border-radius: 50%; object-fit: cover; }</style>")
+    nav = "".join(f'<a href="#">{html.escape(x)}</a>' for x in a.nav.split("|") if x)
+
     doc = f"""<!DOCTYPE html>
-<html lang="en">
+<html {html_attrs}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -222,14 +259,14 @@ def main():
 :root {{ --ck-demo-font: '{first_font}', sans-serif; }}
 {''.join(stylesheets.values())}
 </style>
-</head>
+{head_extra}</head>
 <body>
-<header class="ck-demo-header"><strong>My Store</strong><nav><a href="#">Home</a><a href="#">Catalog</a><a href="#">Contact</a></nav></header>
+<header class="ck-demo-header"><strong>{brand}</strong><nav>{nav}</nav></header>
 {''.join(parts)}
 <script>
 {''.join(scripts.values())}
 </script>
-</body>
+{read(a.body_end_html)}</body>
 </html>
 """
     with open(out, "w", encoding="utf-8", newline="\n") as f:

@@ -159,6 +159,13 @@ python SCRIPTS/save_template.py <theme_dir> <name> --title "<one line>" --images
    CSS/JS, settings and copy, rendered by `SCRIPTS/export_html.py` (python-liquid) without Shopify.
 4. If the library sits in a git repo, commit the template folder (on a branch when on `main`).
 
+Every saved template also gets `slots.json`: a map of every fillable setting (path, type, group content /
+brand / layout, current value, `fact` for prices, ratings, reviews and press names that must come from a real
+source), the sections (hideable, repeatable block types) and the template's `leftovers` (its own text, image
+names, colours). Demo builders fill a copy of `templates/index.json` from it and render with
+`export_html.py --index --footer --images --shop-name --logo --nav --lang --dir --noindex --head-html
+--body-end-html` (no flags = same output as before). Old templates: `save_template.py --slots-only <template>`.
+
 ### Showing and reusing templates
 
 - "شو عندنا قوالب" / "show templates": run `python SCRIPTS/save_template.py --gallery` (refreshes previews and the
