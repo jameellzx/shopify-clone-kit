@@ -51,7 +51,7 @@ Windows note: this machine's Application Control policy blocks pip-installed `.e
 
 ```
 plugins\shopify-clone-kit\skills\theme-clone\
-  SKILL.md                          seven-phase workflow
+  SKILL.md                          workflow: capture → … → ship → save to template library
   references\
     editability-contract.md         the mandatory settings surface
     app-behavior-recreations.md     native recipe per app mechanic
@@ -67,7 +67,25 @@ plugins\shopify-clone-kit\skills\theme-clone\
     capture.py                      viewports, DOM, tokens, assets, behavior probe
     diff.py                         band scoring + contact sheets
     schema_audit.py                 editability-contract linter
+    save_template.py                save a finished clone to the template library (قوالب) + gallery
+    export_html.py                  render a saved template to one standalone HTML page
+    install.py                      install a saved template into any theme (and push)
 ```
+
+## Template library (قوالب)
+
+Every finished clone can be saved as a reusable template: sections, homepage JSON, footer, images, previews and a
+standalone HTML copy that opens without Shopify. A gallery page (`قوالب/index.html`) shows them all.
+
+```bash
+python scripts/save_template.py <theme> <name> --title "..." --images <dir>   # save
+python scripts/save_template.py --gallery                                     # rebuild the gallery
+python قوالب/install.py --list                                                # list
+python قوالب/install.py <name> <theme> --store x.myshopify.com --theme-id N   # reuse, no rebuild
+```
+
+The library folder is `CK_TEMPLATES_DIR`, else `قوالب/` in the current folder. The HTML export needs
+`python -m pip install python-liquid`.
 
 ## Using the scripts standalone
 
