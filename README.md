@@ -20,14 +20,18 @@ capture → decompose → recreate-behaviors → map → generate → verify →
 ## Install (Claude Code)
 
 ```bash
-/plugin marketplace add C:\dev\shopify-clone-kit
+/plugin marketplace add jameellzx/shopify-clone-kit
 ```
 
 ```bash
 /plugin install shopify-clone-kit@shopify-clone-kit
 ```
 
-### After editing — always run sync
+Restart Claude Code, then ask: "set up the theme-clone tools" (runs `setup.py --install`).
+
+Tools you need: Node.js, Git, Python 3, Shopify CLI (`npm install -g @shopify/cli@latest`), and Google Chrome with the Claude in Chrome extension for sites behind a bot check.
+
+### After editing — always run sync (maintainers)
 
 The plugin cache is **version-pinned**. Editing a skill file does nothing on its own; the version in `plugin.json` has to change and the plugin has to be reinstalled. One command does all of it:
 
